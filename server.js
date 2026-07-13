@@ -68,3 +68,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`📡 Server broadcasting on port ${PORT}`);
 });
+
+// EXPORT FOR VERCEL (Must be outside the app.listen block)
+module.exports = app;
