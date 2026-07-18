@@ -7,16 +7,52 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 // --- 1. STUDENT SUBMITS A REQUEST ---
+// Add this inside your publicRoutes.js file
+
 router.post('/student-request', async (req, res) => {
+  const {
+    student_name,
+    class_level,
+    parent_name,
+    email,
+    contact_number,
+    subjects,
+    preferred_mode,
+    city,
+    specific_area,
+    location_coords
+  } = req.body;
+
+  // Basic validation on the backend
+  if (!student_name || !parent_name || !email || !contact_number || !subjects) {
+    return res.status(400).json({ error: "Missing required fields." });
+  }
+
   try {
-    const { error } = await supabase
-      .from('student_leads')
-      .insert([req.body]);
+    // Insert the data into the Supabase table
+    const { data, error } = await supabaseAdmin
+      .from('student_requests')
+      .insert([
+        {
+          student_name,
+          class_level,
+          parent_name,
+          email,
+          contact_number,
+          subjects, // Passes the array of strings directly
+          preferred_mode,
+          city,
+          specific_area,
+          location_coords
+        }
+      ]);
 
     if (error) throw error;
-    res.status(201).json({ message: 'Request received successfully!' });
+
+    res.status(200).json({ message: 'Student request submitted successfully!' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error inserting student request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
