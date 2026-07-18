@@ -26,11 +26,10 @@ router.post('/student-request', async (req, res) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
-  // CRITICAL FIX: Convert the React array into a string for your database
+  // Convert the React array into a string for your database
   const subject_needed = subjects.join(', ');
 
   try {
-    // CRITICAL FIX: Use 'supabase' (not supabaseAdmin) and target 'student_leads'
     const { data, error } = await supabase
       .from('student_leads')
       .insert([
@@ -40,7 +39,7 @@ router.post('/student-request', async (req, res) => {
           parent_name,
           email,
           contact_number,
-          subject_needed, // Send the converted string here
+          subject_needed, 
           preferred_mode,
           city,
           specific_area,
@@ -63,8 +62,22 @@ router.post('/teacher-apply', upload.fields([
   { name: 'idProof', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { fullName, contactNumber, teachingModes, specificArea } = req.body;
+    // FIX 1: Extract the new required fields from the frontend request
+    const { 
+      fullName, 
+      contactNumber, 
+      teachingModes, 
+      specificArea,
+      email,           // Added
+      subjects,        // Added
+      locationCoords   // Added
+    } = req.body;
     
+    // FIX 2: Strict backend validation for the new required fields
+    if (!fullName || !contactNumber || !teachingModes || !specificArea || !email || !subjects) {
+      return res.status(400).json({ error: "Missing required fields (including email and subjects)." });
+    }
+
     // Helper function to upload files directly to Supabase Storage
     const uploadFile = async (file, folder) => {
       const fileName = `${Date.now()}-${file.originalname}`;
@@ -86,7 +99,7 @@ router.post('/teacher-apply', upload.fields([
     const profilePhotoUrl = await uploadFile(req.files['profilePhoto'][0], 'photos');
     const idProofUrl = await uploadFile(req.files['idProof'][0], 'documents');
 
-    // Save Teacher to Database
+    // FIX 3: Include the new fields in the database insert
     const { error: dbError } = await supabase
       .from('teachers')
       .insert([{
@@ -95,7 +108,10 @@ router.post('/teacher-apply', upload.fields([
         teaching_modes: JSON.parse(teachingModes),
         specific_area: specificArea,
         profile_photo_url: profilePhotoUrl,
-        id_proof_url: idProofUrl
+        id_proof_url: idProofUrl,
+        email: email,                             // Added
+        subjects: subjects,                       // Added
+        location_coords: locationCoords || '0,0'  // Fallback added to prevent NOT NULL database errors
       }]);
 
     if (dbError) throw dbError;
