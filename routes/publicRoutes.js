@@ -7,8 +7,6 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 // --- 1. STUDENT SUBMITS A REQUEST ---
-// Add this inside your publicRoutes.js file
-
 router.post('/student-request', async (req, res) => {
   const {
     student_name,
@@ -28,10 +26,13 @@ router.post('/student-request', async (req, res) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
+  // CRITICAL FIX: Convert the React array into a string for your database
+  const subject_needed = subjects.join(', ');
+
   try {
-    // Insert the data into the Supabase table
-    const { data, error } = await supabaseAdmin
-      .from('student_requests')
+    // CRITICAL FIX: Use 'supabase' (not supabaseAdmin) and target 'student_leads'
+    const { data, error } = await supabase
+      .from('student_leads')
       .insert([
         {
           student_name,
@@ -39,7 +40,7 @@ router.post('/student-request', async (req, res) => {
           parent_name,
           email,
           contact_number,
-          subjects, // Passes the array of strings directly
+          subject_needed, // Send the converted string here
           preferred_mode,
           city,
           specific_area,
