@@ -26,8 +26,8 @@ router.post('/student-request', async (req, res) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
-  // Convert the React array into a string for your database
-  const subject_needed = subjects.join(', ');
+  // Convert the array into a string for your database if needed
+  const subject_needed = Array.isArray(subjects) ? subjects.join(', ') : subjects;
 
   try {
     const { data, error } = await supabase
@@ -62,32 +62,51 @@ router.post('/teacher-apply', upload.fields([
   { name: 'idProof', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    // FIX 1: Extract the new required fields from the frontend request
     const { 
       fullName, 
       contactNumber, 
       teachingModes, 
       specificArea,
-      email,           // Added
-      subjects,        // Added
-      locationCoords   // Added
+      email,
+      subjects,
+      locationCoords 
     } = req.body;
     
-    // FIX 2: Strict backend validation for the new required fields
+    // Strict backend validation for mandatory text fields
     if (!fullName || !contactNumber || !teachingModes || !specificArea || !email || !subjects) {
       return res.status(400).json({ error: "Missing required fields (including email and subjects)." });
     }
 
-    // Helper function to upload files directly to Supabase Storage
+    // Check CRM settings to see if document uploads are required
+    const { data: settingsData } = await supabase
+      .from('app_settings')
+      .select('enable_doc_upload')
+      .single();
+
+    const isDocUploadEnabled = settingsData?.enable_doc_upload ?? true;
+
+    // Extract files safely without throwing TypeError
+    const profilePhotoFile = req.files?.['profilePhoto']?.[0];
+    const idProofFile = req.files?.['idProof']?.[0];
+
+    // Enforce file checks ONLY IF document uploads are enabled in CRM settings
+    if (isDocUploadEnabled) {
+      if (!profilePhotoFile || !idProofFile) {
+        return res.status(400).json({ error: "Profile photo and ID proof are required." });
+      }
+    }
+
+    // Helper function to upload files safely to Supabase Storage
     const uploadFile = async (file, folder) => {
+      if (!file) return null;
+
       const fileName = `${Date.now()}-${file.originalname}`;
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('learning-hub-uploads')
         .upload(`${folder}/${fileName}`, file.buffer, { contentType: file.mimetype });
       
       if (error) throw error;
       
-      // Get the public URL
       const { data: publicUrlData } = supabase.storage
         .from('learning-hub-uploads')
         .getPublicUrl(`${folder}/${fileName}`);
@@ -95,29 +114,38 @@ router.post('/teacher-apply', upload.fields([
       return publicUrlData.publicUrl;
     };
 
-    // Upload files
-    const profilePhotoUrl = await uploadFile(req.files['profilePhoto'][0], 'photos');
-    const idProofUrl = await uploadFile(req.files['idProof'][0], 'documents');
+    // Upload files conditionally
+    const profilePhotoUrl = profilePhotoFile ? await uploadFile(profilePhotoFile, 'photos') : null;
+    const idProofUrl = idProofFile ? await uploadFile(idProofFile, 'documents') : null;
 
-    // FIX 3: Include the new fields in the database insert
+    // Safely parse teachingModes
+    let parsedModes = [];
+    try {
+      parsedModes = typeof teachingModes === 'string' ? JSON.parse(teachingModes) : teachingModes;
+    } catch {
+      parsedModes = [teachingModes];
+    }
+
+    // Insert into Supabase database
     const { error: dbError } = await supabase
       .from('teachers')
       .insert([{
         full_name: fullName,
         contact_number: contactNumber,
-        teaching_modes: JSON.parse(teachingModes),
+        teaching_modes: parsedModes,
         specific_area: specificArea,
         profile_photo_url: profilePhotoUrl,
         id_proof_url: idProofUrl,
-        email: email,                             // Added
-        subjects: subjects,                       // Added
-        location_coords: locationCoords || '0,0'  // Fallback added to prevent NOT NULL database errors
+        email: email,
+        subjects: subjects,
+        location_coords: locationCoords || '0,0'
       }]);
 
     if (dbError) throw dbError;
+
     res.status(201).json({ message: 'Application submitted for review!' });
   } catch (error) {
-    console.error(error);
+    console.error('Teacher application submission error:', error);
     res.status(500).json({ error: error.message });
   }
 });
