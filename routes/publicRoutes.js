@@ -77,11 +77,12 @@ router.post('/teacher-apply', upload.fields([
       return res.status(400).json({ error: "Missing required fields (including email and subjects)." });
     }
 
-    // Check CRM settings to see if document uploads are required
+    // Check CRM settings safely targeting id = 1 with maybeSingle() to avoid 500 errors
     const { data: settingsData } = await supabase
       .from('app_settings')
       .select('enable_doc_upload')
-      .single();
+      .eq('id', 1)
+      .maybeSingle();
 
     const isDocUploadEnabled = settingsData?.enable_doc_upload ?? true;
 
@@ -114,7 +115,7 @@ router.post('/teacher-apply', upload.fields([
       return publicUrlData.publicUrl;
     };
 
-    // Upload files conditionally
+    // Upload files conditionally (will skip cleanly if disabled or missing)
     const profilePhotoUrl = profilePhotoFile ? await uploadFile(profilePhotoFile, 'photos') : null;
     const idProofUrl = idProofFile ? await uploadFile(idProofFile, 'documents') : null;
 
