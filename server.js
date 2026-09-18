@@ -2,9 +2,11 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-// Initialize Supabase Admin
-// IMPORTANT: Keep the Service Role Key only on the backend.
 const { createClient } = require('@supabase/supabase-js');
+
+// ===============================
+// SUPABASE ADMIN
+// ===============================
 
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
@@ -13,9 +15,9 @@ const supabaseAdmin = createClient(
 
 const app = express();
 
-// =========================
-// CORS CONFIGURATION
-// =========================
+// ===============================
+// CORS
+// ===============================
 
 const allowedOrigins = [
   'https://www.nexustuitions.com',
@@ -23,62 +25,65 @@ const allowedOrigins = [
   'https://learning-hub-mainsite.vercel.app'
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests without an Origin header
-      // (Postman, server-to-server requests, etc.)
-      if (!origin) {
-        return callback(null, true);
-      }
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests without Origin
+    if (!origin) {
+      return callback(null, true);
+    }
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-      console.log('Blocked CORS origin:', origin);
-      return callback(new Error('Not allowed by CORS'));
-    },
+    console.log('CORS blocked origin:', origin);
 
-    methods: [
-      'GET',
-      'POST',
-      'PUT',
-      'PATCH',
-      'DELETE',
-      'OPTIONS'
-    ],
+    return callback(null, false);
+  },
 
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization'
-    ],
+  methods: [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS'
+  ],
 
-    credentials: true
-  })
-);
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept'
+  ],
 
-// Handle browser preflight requests
-app.options('*', cors());
+  credentials: true,
+
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS BEFORE routes
+app.use(cors(corsOptions));
+
+// Explicitly handle browser preflight requests
+app.options('/api/public/student-request', cors(corsOptions));
 
 app.use(express.json());
 
-// =========================
+// ===============================
 // PUBLIC ROUTES
-// =========================
+// ===============================
 
 const publicRoutes = require('./routes/publicRoutes');
 
 app.use('/api/public', publicRoutes);
 
-// =========================
+// ===============================
 // ADMIN ROUTES
-// =========================
+// ===============================
 
 app.post('/api/admin/create-employee', async (req, res) => {
   const { email, password, full_name } = req.body;
 
-  // Validation
   if (!email || !password || !full_name) {
     return res.status(400).json({
       error: 'Missing required fields: email, password, or full_name.'
@@ -86,7 +91,7 @@ app.post('/api/admin/create-employee', async (req, res) => {
   }
 
   try {
-    // 1. Create Auth User
+    // Create Auth User
     const { data: authData, error: authError } =
       await supabaseAdmin.auth.admin.createUser({
         email,
@@ -98,7 +103,7 @@ app.post('/api/admin/create-employee', async (req, res) => {
       throw authError;
     }
 
-    // 2. Insert employee into database
+    // Insert employee
     const { error: dbError } = await supabaseAdmin
       .from('employees')
       .insert([
@@ -115,7 +120,7 @@ app.post('/api/admin/create-employee', async (req, res) => {
       throw dbError;
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       message: 'Employee account created successfully!'
     });
 
@@ -125,36 +130,39 @@ app.post('/api/admin/create-employee', async (req, res) => {
       error
     );
 
-    res.status(500).json({
-      error:
-        error.message ||
-        'Internal Server Error'
+    return res.status(500).json({
+      error: error.message || 'Internal Server Error'
     });
   }
 });
 
-// =========================
+// ===============================
 // HEALTH CHECK
-// =========================
+// ===============================
 
 app.get('/', (req, res) => {
-  res.send('🚀 Learning Hub CRM Engine running securely!');
+  res.status(200).json({
+    status: 'success',
+    message: '🚀 Learning Hub CRM Engine running securely!'
+  });
 });
 
-// =========================
-// SERVER
-// =========================
+// ===============================
+// START SERVER
+// ===============================
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(
-    `📡 Server broadcasting on port ${PORT}`
-  );
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(
+      `📡 Server broadcasting on port ${PORT}`
+    );
+  });
+}
 
-// =========================
+// ===============================
 // VERCEL EXPORT
-// =========================
+// ===============================
 
 module.exports = app;
