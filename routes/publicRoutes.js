@@ -53,9 +53,8 @@ router.post('/student-request', async (req, res) => {
     location_coords,
   } = req.body;
 
-  // Strict backend validation
   const hasSubjects = Array.isArray(subjects) ? subjects.length > 0 : Boolean(subjects?.trim?.());
-  
+
   if (
     !student_name?.trim() ||
     !parent_name?.trim() ||
@@ -67,7 +66,6 @@ router.post('/student-request', async (req, res) => {
     return res.status(400).json({ error: 'Missing required student or contact fields.' });
   }
 
-  // Normalize subjects array into comma-separated string for DB storage
   const subject_needed = Array.isArray(subjects)
     ? subjects.filter(Boolean).join(', ')
     : String(subjects).trim();
@@ -118,7 +116,6 @@ router.post(
         locationCoords,
       } = req.body;
 
-      // Strict validation for required mandatory text fields
       if (
         !fullName?.trim() ||
         !contactNumber?.trim() ||
@@ -130,7 +127,6 @@ router.post(
         return res.status(400).json({ error: 'Missing required profile fields.' });
       }
 
-      // Check document upload requirement setting safely
       const { data: settingsData } = await supabase
         .from('app_settings')
         .select('enable_doc_upload')
@@ -139,18 +135,15 @@ router.post(
 
       const isDocUploadEnabled = settingsData?.enable_doc_upload ?? true;
 
-      // Extract uploaded files safely
       const profilePhotoFile = req.files?.['profilePhoto']?.[0];
       const idProofFile = req.files?.['idProof']?.[0];
 
-      // Enforce file check when document uploads are enabled
       if (isDocUploadEnabled && (!profilePhotoFile || !idProofFile)) {
         return res.status(400).json({
           error: 'Profile photo and ID proof documents are required.',
         });
       }
 
-      // Safe helper for Supabase Storage file upload
       const uploadFile = async (file, folder) => {
         if (!file) return null;
 
@@ -173,13 +166,11 @@ router.post(
         return publicUrlData?.publicUrl || null;
       };
 
-      // Perform file uploads concurrently
       const [profilePhotoUrl, idProofUrl] = await Promise.all([
         profilePhotoFile ? uploadFile(profilePhotoFile, 'photos') : Promise.resolve(null),
         idProofFile ? uploadFile(idProofFile, 'documents') : Promise.resolve(null),
       ]);
 
-      // Parse teachingModes payload safely (handles Array, JSON string, or single string)
       let parsedModes = [];
       if (Array.isArray(teachingModes)) {
         parsedModes = teachingModes;
@@ -192,12 +183,10 @@ router.post(
         }
       }
 
-      // Normalize subjects payload
       const normalizedSubjects = Array.isArray(subjects)
         ? subjects.join(', ')
         : String(subjects).trim();
 
-      // Insert record into database
       const { error: dbError } = await supabase.from('teachers').insert([
         {
           full_name: fullName.trim(),
@@ -221,5 +210,48 @@ router.post(
     }
   }
 );
+
+// ==============================================================================
+// 3. CONTACT FORM MESSAGE
+//    NOTE: this route did not exist before. contact.jsx has been posting to
+//    /api/public/contact-message since it was written, so every contact-form
+//    submission has 404'd regardless of hostname. Table below must exist:
+//
+//    create table contact_messages (
+//      id uuid primary key default gen_random_uuid(),
+//      name text not null,
+//      email text,
+//      phone text,
+//      subject text,
+//      message text not null,
+//      created_at timestamptz default now()
+//    );
+// ==============================================================================
+router.post('/contact-message', async (req, res) => {
+  const { name, email, phone, subject, message } = req.body;
+
+  if (!name?.trim() || !message?.trim()) {
+    return res.status(400).json({ error: 'Name and message are required.' });
+  }
+
+  try {
+    const { error } = await supabase.from('contact_messages').insert([
+      {
+        name: name.trim(),
+        email: email?.trim()?.toLowerCase() || null,
+        phone: phone?.trim() || null,
+        subject: subject?.trim() || null,
+        message: message.trim(),
+      },
+    ]);
+
+    if (error) throw error;
+
+    return res.status(200).json({ message: 'Message received. We will get back to you shortly!' });
+  } catch (error) {
+    console.error('Error inserting contact message:', error);
+    return res.status(500).json({ error: 'Failed to send message. Please try again later.' });
+  }
+});
 
 module.exports = router;
